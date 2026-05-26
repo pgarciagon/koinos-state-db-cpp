@@ -939,6 +939,61 @@ BOOST_AUTO_TEST_CASE( get_delta_entries_test )
   KOINOS_CATCH_LOG_AND_RETHROW( info )
 }
 
+BOOST_AUTO_TEST_CASE( rewind_head_to_revision_test )
+{
+  try
+  {
+    auto shared_db_lock = db.get_shared_lock();
+
+    object_space space;
+    std::string a_key = "a";
+    std::string a_val = "alice";
+    std::string b_key = "b";
+    std::string b_val = "bob";
+    std::string c_key = "c";
+    std::string c_val = "carol";
+
+    auto state_1_id = crypto::hash( crypto::multicodec::sha2_256, 101 );
+    auto state_1    = db.create_writable_node( db.get_head( shared_db_lock )->id(),
+                                            state_1_id,
+                                            protocol::block_header(),
+                                            shared_db_lock );
+    BOOST_REQUIRE( state_1 );
+    state_1->put_object( space, a_key, &a_val );
+    db.finalize_node( state_1_id, shared_db_lock );
+
+    auto state_2_id = crypto::hash( crypto::multicodec::sha2_256, 102 );
+    auto state_2    = db.create_writable_node( state_1_id, state_2_id, protocol::block_header(), shared_db_lock );
+    BOOST_REQUIRE( state_2 );
+    state_2->put_object( space, b_key, &b_val );
+    db.finalize_node( state_2_id, shared_db_lock );
+
+    auto state_3_id = crypto::hash( crypto::multicodec::sha2_256, 103 );
+    auto state_3    = db.create_writable_node( state_2_id, state_3_id, protocol::block_header(), shared_db_lock );
+    BOOST_REQUIRE( state_3 );
+    state_3->put_object( space, c_key, &c_val );
+    db.finalize_node( state_3_id, shared_db_lock );
+
+    BOOST_CHECK_EQUAL( db.get_head( shared_db_lock )->revision(), 3 );
+
+    db.rewind_head_to_revision( 1, db.get_unique_lock() );
+
+    auto rewound_head = db.get_head( shared_db_lock );
+    BOOST_REQUIRE( rewound_head );
+    BOOST_CHECK_EQUAL( rewound_head->revision(), 1 );
+
+    auto a_ptr = rewound_head->get_object( space, a_key );
+    BOOST_REQUIRE( a_ptr );
+    BOOST_CHECK_EQUAL( *a_ptr, a_val );
+    BOOST_CHECK( !rewound_head->get_object( space, b_key ) );
+    BOOST_CHECK( !rewound_head->get_object( space, c_key ) );
+
+    BOOST_CHECK( !db.get_node( state_2_id, shared_db_lock ) );
+    BOOST_CHECK( !db.get_node( state_3_id, shared_db_lock ) );
+  }
+  KOINOS_CATCH_LOG_AND_RETHROW( info )
+}
+
 BOOST_AUTO_TEST_CASE( rocksdb_backend_test )
 {
   try

@@ -185,6 +185,7 @@ public:
   state_node_ptr get_head( const shared_lock_ptr& lock ) const;
   state_node_ptr get_head( const unique_lock_ptr& lock ) const;
   state_node_ptr get_head_lockless() const;
+  void rewind_head_to_revision( uint64_t revision, const unique_lock_ptr& lock );
   std::vector< state_node_ptr > get_fork_heads( const shared_lock_ptr& lock ) const;
   std::vector< state_node_ptr > get_fork_heads( const unique_lock_ptr& lock ) const;
   std::vector< state_node_ptr > get_all_nodes( const shared_lock_ptr& lock ) const;
@@ -881,6 +882,48 @@ state_node_ptr database_impl::get_head_lockless() const
   return head;
 }
 
+void database_impl::rewind_head_to_revision( uint64_t revision, const unique_lock_ptr& lock )
+{
+  KOINOS_ASSERT( verify_unique_lock( lock ), illegal_argument, "database is not properly locked" );
+  std::lock_guard< std::timed_mutex > index_lock( _index_mutex );
+  std::unique_lock< std::shared_mutex > fork_heads_lock( _fork_heads_mutex );
+  KOINOS_ASSERT( is_open(), database_not_open, "database is not open" );
+  KOINOS_ASSERT( revision >= _root->revision(),
+                 illegal_argument,
+                 "cannot rewind below root revision. root: ${root}, requested: ${req}",
+                 ( "root", _root->revision() )( "req", revision ) );
+  KOINOS_ASSERT( revision <= _head->revision(),
+                 illegal_argument,
+                 "cannot rewind above current head revision. head: ${head}, requested: ${req}",
+                 ( "head", _head->revision() )( "req", revision ) );
+
+  if( revision == _head->revision() )
+    return;
+
+  auto target = get_node_at_revision( revision, _head->id(), lock );
+  KOINOS_ASSERT( target, illegal_argument, "could not locate target revision ${rev}", ( "rev", revision ) );
+  KOINOS_ASSERT( target->is_finalized(), illegal_argument, "target revision is not finalized" );
+
+  _head = target->_impl->_state;
+
+  std::vector< state_node_id > remove_ids;
+  const auto& rev_idx = _index.template get< by_revision >();
+  auto itr            = rev_idx.upper_bound( revision );
+  while( itr != rev_idx.end() )
+  {
+    remove_ids.push_back( ( *itr )->id() );
+    ++itr;
+  }
+
+  for( const auto& id: remove_ids )
+  {
+    static const std::unordered_set< state_node_id > empty_whitelist;
+    discard_node_lockless( id, empty_whitelist );
+  }
+
+  _fork_heads.insert_or_assign( _head->id(), _head );
+}
+
 std::vector< state_node_ptr > database_impl::get_fork_heads( const shared_lock_ptr& lock ) const
 {
   KOINOS_ASSERT( verify_shared_lock( lock ), illegal_argument, "database is not properly locked" );
@@ -1470,6 +1513,11 @@ state_node_ptr database::get_head( const shared_lock_ptr& lock ) const
 state_node_ptr database::get_head( const unique_lock_ptr& lock ) const
 {
   return impl->get_head( lock );
+}
+
+void database::rewind_head_to_revision( uint64_t revision, const unique_lock_ptr& lock )
+{
+  impl->rewind_head_to_revision( revision, lock ? lock : get_unique_lock() );
 }
 
 std::vector< state_node_ptr > database::get_fork_heads( const shared_lock_ptr& lock ) const

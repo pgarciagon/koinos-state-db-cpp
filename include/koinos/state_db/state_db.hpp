@@ -426,6 +426,15 @@ public:
   state_node_ptr get_head( const unique_lock_ptr& lock ) const;
 
   /**
+   * Rewind canonical head to a previous finalized revision.
+   *
+   * This operation discards all nodes above the target revision.
+   *
+   * WARNING: Revision must be >= current root revision.
+   */
+  void rewind_head_to_revision( uint64_t revision, const unique_lock_ptr& lock );
+
+  /**
    * Get and return a vector of all fork heads.
    *
    * Fork heads are any finalized nodes that do
