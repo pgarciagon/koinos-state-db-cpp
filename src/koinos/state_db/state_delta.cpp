@@ -357,11 +357,15 @@ std::vector< protocol::state_delta_entry > state_delta::get_delta_entries() cons
       entry.mutable_object_space()->set_id( db_key.space().id() );
 
       entry.set_key( db_key.key() );
-      auto value = _backend->get( key );
+      auto value          = _backend->get( key );
+      auto previous_value = _parent ? _parent->find( key ) : nullptr;
 
       // Set the optional field if not null
       if( value != nullptr )
         entry.set_value( *value );
+
+      if( previous_value != nullptr )
+        entry.set_previous_value( *previous_value );
 
       deltas.push_back( entry );
     }

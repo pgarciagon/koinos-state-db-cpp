@@ -887,14 +887,17 @@ BOOST_AUTO_TEST_CASE( get_delta_entries_test )
     BOOST_CHECK_EQUAL( a_key, entries[ 0 ].key() );
     BOOST_CHECK_EQUAL( space.DebugString(), entries[ 0 ].object_space().DebugString() );
     BOOST_CHECK_EQUAL( a_val, entries[ 0 ].value() );
+    BOOST_CHECK( !entries[ 0 ].has_previous_value() );
 
     BOOST_CHECK_EQUAL( b_key, entries[ 1 ].key() );
     BOOST_CHECK_EQUAL( space.DebugString(), entries[ 1 ].object_space().DebugString() );
     BOOST_CHECK_EQUAL( b_val, entries[ 1 ].value() );
+    BOOST_CHECK( !entries[ 1 ].has_previous_value() );
 
     BOOST_CHECK_EQUAL( c_key, entries[ 2 ].key() );
     BOOST_CHECK_EQUAL( space.DebugString(), entries[ 2 ].object_space().DebugString() );
     BOOST_CHECK_EQUAL( c_val, entries[ 2 ].value() );
+    BOOST_CHECK( !entries[ 2 ].has_previous_value() );
 
     db.finalize_node( state_1_id, shared_db_lock );
 
@@ -919,14 +922,19 @@ BOOST_AUTO_TEST_CASE( get_delta_entries_test )
     BOOST_CHECK_EQUAL( a_key, entries2[ 0 ].key() );
     BOOST_CHECK_EQUAL( space.DebugString(), entries2[ 0 ].object_space().DebugString() );
     BOOST_CHECK_EQUAL( a_val, entries2[ 0 ].value() );
+    BOOST_CHECK( entries2[ 0 ].has_previous_value() );
+    BOOST_CHECK_EQUAL( entries2[ 0 ].previous_value(), "alice" );
 
     BOOST_CHECK_EQUAL( b_key, entries2[ 1 ].key() );
     BOOST_CHECK_EQUAL( space.DebugString(), entries2[ 1 ].object_space().DebugString() );
     BOOST_CHECK_EQUAL( false, entries2[ 1 ].has_value() ); // Deleted value
+    BOOST_CHECK( entries2[ 1 ].has_previous_value() );
+    BOOST_CHECK_EQUAL( entries2[ 1 ].previous_value(), "bob" );
 
     BOOST_CHECK_EQUAL( d_key, entries2[ 2 ].key() );
     BOOST_CHECK_EQUAL( space.DebugString(), entries2[ 2 ].object_space().DebugString() );
     BOOST_CHECK_EQUAL( d_val, entries2[ 2 ].value() );
+    BOOST_CHECK( !entries2[ 2 ].has_previous_value() );
   }
   KOINOS_CATCH_LOG_AND_RETHROW( info )
 }
