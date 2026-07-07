@@ -1037,6 +1037,69 @@ BOOST_AUTO_TEST_CASE( preserve_tombstone_test )
     BOOST_CHECK_EQUAL( 3, preserved_replay->get_delta_entries().size() );
     db.finalize_node( preserved_replay_id, shared_db_lock );
     BOOST_CHECK_EQUAL( execution->merkle_root(), preserved_replay->merkle_root() );
+
+    // Removing a key present in the parent state must behave identically
+    // under both semantics: same delta entries, same merkle root
+    auto parity_normal_id = crypto::hash( crypto::multicodec::sha2_256, 7 );
+    auto parity_normal =
+      db.create_writable_node( state_1_id, parity_normal_id, protocol::block_header(), shared_db_lock );
+    parity_normal->remove_object( space, a_key );
+
+    auto parity_preserved_id = crypto::hash( crypto::multicodec::sha2_256, 8 );
+    auto parity_preserved =
+      db.create_writable_node( state_1_id, parity_preserved_id, protocol::block_header(), shared_db_lock );
+    parity_preserved->remove_object_preserve_tombstone( space, a_key );
+
+    auto parity_normal_entries    = parity_normal->get_delta_entries();
+    auto parity_preserved_entries = parity_preserved->get_delta_entries();
+    BOOST_REQUIRE_EQUAL( 1, parity_normal_entries.size() );
+    BOOST_REQUIRE_EQUAL( 1, parity_preserved_entries.size() );
+    BOOST_CHECK_EQUAL( parity_normal_entries[ 0 ].DebugString(), parity_preserved_entries[ 0 ].DebugString() );
+
+    db.finalize_node( parity_normal_id, shared_db_lock );
+    db.finalize_node( parity_preserved_id, shared_db_lock );
+    BOOST_CHECK_EQUAL( parity_normal->merkle_root(), parity_preserved->merkle_root() );
+
+    // A delta of {put X, preserved-remove Y (absent), put Z} must reproduce a
+    // reference merkle root computed by hand from the serialized database keys:
+    // sorted keys, value leaf of the preserved tombstone is the empty string
+    std::string x_key = "x";
+    std::string x_val = "xavier";
+    std::string y_key = "y";
+    std::string z_key = "z";
+    std::string z_val = "zoe";
+
+    auto reference_id = crypto::hash( crypto::multicodec::sha2_256, 9 );
+    auto reference = db.create_writable_node( state_1_id, reference_id, protocol::block_header(), shared_db_lock );
+
+    reference->put_object( space, x_key, &x_val );
+    reference->remove_object_preserve_tombstone( space, y_key );
+    reference->put_object( space, z_key, &z_val );
+
+    chain::database_key x_db_key;
+    *x_db_key.mutable_space() = space;
+    x_db_key.set_key( x_key );
+
+    chain::database_key y_db_key;
+    *y_db_key.mutable_space() = space;
+    y_db_key.set_key( y_key );
+
+    chain::database_key z_db_key;
+    *z_db_key.mutable_space() = space;
+    z_db_key.set_key( z_key );
+
+    std::vector< std::string > reference_leafs;
+    reference_leafs.emplace_back( koinos::util::converter::as< std::string >( x_db_key ) );
+    reference_leafs.push_back( x_val );
+    reference_leafs.emplace_back( koinos::util::converter::as< std::string >( y_db_key ) );
+    reference_leafs.push_back( "" );
+    reference_leafs.emplace_back( koinos::util::converter::as< std::string >( z_db_key ) );
+    reference_leafs.push_back( z_val );
+
+    db.finalize_node( reference_id, shared_db_lock );
+    auto reference_root =
+      koinos::crypto::merkle_tree< std::string >( koinos::crypto::multicodec::sha2_256, reference_leafs ).root()->hash();
+    BOOST_CHECK_EQUAL( reference_root, reference->merkle_root() );
   }
   KOINOS_CATCH_LOG_AND_RETHROW( info )
 }
