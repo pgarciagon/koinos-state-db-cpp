@@ -91,6 +91,14 @@ public:
   int64_t remove_object( const object_space& space, const object_key& key );
 
   /**
+   * Remove an object while preserving the delete tombstone even when the object is absent.
+   *
+   * This is intended only for replaying serialized historical state deltas. Normal state
+   * mutation should use remove_object().
+   */
+  int64_t remove_object_preserve_tombstone( const object_space& space, const object_key& key );
+
+  /**
    * Return true if the node is writable.
    */
   bool is_finalized() const;
