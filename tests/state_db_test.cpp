@@ -1104,6 +1104,47 @@ BOOST_AUTO_TEST_CASE( preserve_tombstone_test )
   KOINOS_CATCH_LOG_AND_RETHROW( info )
 }
 
+BOOST_AUTO_TEST_CASE( pending_merkle_root_test )
+{
+  try
+  {
+    auto shared_db_lock = db.get_shared_lock();
+
+    object_space space;
+    std::string a_key = "a";
+    std::string a_val = "alice";
+    std::string b_key = "b";
+    std::string b_val = "bob";
+
+    auto state_1_id = crypto::hash( crypto::multicodec::sha2_256, 1 );
+    auto state_1    = db.create_writable_node( db.get_head( shared_db_lock )->id(),
+                                            state_1_id,
+                                            protocol::block_header(),
+                                            shared_db_lock );
+
+    state_1->put_object( space, a_key, &a_val );
+    state_1->remove_object_preserve_tombstone( space, b_key );
+
+    // The pending root is available on a writable node while merkle_root still throws
+    auto pending_before = state_1->pending_merkle_root();
+    BOOST_CHECK_THROW( state_1->merkle_root(), koinos::exception );
+
+    // Mutating after a pending root computation must be reflected in later
+    // computations - the pending call must not populate the cached root
+    std::string c_key = "c";
+    std::string c_val = "charlie";
+    state_1->put_object( space, c_key, &c_val );
+
+    auto pending_after = state_1->pending_merkle_root();
+    BOOST_CHECK( pending_before != pending_after );
+
+    db.finalize_node( state_1_id, shared_db_lock );
+    BOOST_CHECK_EQUAL( pending_after, state_1->merkle_root() );
+    BOOST_CHECK_EQUAL( pending_after, state_1->pending_merkle_root() );
+  }
+  KOINOS_CATCH_LOG_AND_RETHROW( info )
+}
+
 BOOST_AUTO_TEST_CASE( rocksdb_backend_test )
 {
   try

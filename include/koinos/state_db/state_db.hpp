@@ -109,6 +109,15 @@ public:
   crypto::multihash merkle_root() const;
 
   /**
+   * Return the merkle root of writes on this state node without requiring finalization.
+   *
+   * Unlike merkle_root(), the value is computed fresh on every call and never cached,
+   * so it remains correct if the node is mutated afterwards. Intended for inspecting
+   * the pending root of a writable node while replaying serialized state deltas.
+   */
+  crypto::multihash pending_merkle_root() const;
+
+  /**
    * Returns the state delta entries associated with this state node
    */
   std::vector< protocol::state_delta_entry > get_delta_entries() const;
